@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=./config_format.yml
+# PLEASE COPY THIS FILE OR CRETATE NEW FILE.
+base:
+  tmp: "./tmp"
+this:
+  repo: Surigoma/webhook-updater
+  conditions:
+    - eventType: push
+  secret: SECRET-TEXT-HERE
+  deploy: git
+targets:
+  test-download:
+    repo: USER/GIT_REPO
+    path: /
+    conditions:
+      - eventType: release
+        action: released
+    deploy: download_file
+    filename: "release.tar.gz"
+  test-relation:
+    repo: USER/GIT_REPO-2
+    deploy: relation
+    relation: http://example.localhost/hook/this

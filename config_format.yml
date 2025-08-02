@@ -1,0 +1,106 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+$schema: https://json-schema.org/draft/2020-12/schema
+title: "webhook-updater config"
+
+definitions:
+  target_condition:
+    type: object
+    properties:
+      eventType:
+        description: |
+          Webhook event type
+          https://docs.github.com/webhooks/webhook-events-and-payloads
+        type: string
+      action:
+        description: |
+          Webhook actions
+        type: string
+    required:
+      - eventType
+  target_prop:
+    type: object
+    additionalProperties: false
+    properties:
+      repo:
+        description: |
+          Repository path
+          Please check "repository.full_name"
+          https://docs.github.com/webhooks/webhook-events-and-payloads#example-webhook-delivery
+        type: string
+      secret:
+        description: |
+          Webhook secret parametor
+        type: string
+      path:
+        description: |
+          Path of target git repo.
+        type: string
+        format: path
+      deploy:
+        enum:
+          - git
+          - download_file
+          - relation
+      relation:
+        description: Relation to other "webhook-updater"
+        type: string
+        format: uri
+      conditions:
+        type: array
+        minimum: 1
+        items:
+          $ref: "#/definitions/target_condition"
+      filename:
+        type: string
+        description: |
+          Target filename when deploy type is "download_file"
+    required:
+      - repo
+      - deploy
+  target_cond:
+    $ref: "#/definitions/target_prop"
+    allOf:
+      - if:
+          properties:
+            deploy:
+              const: "download_file"
+        then:
+          required:
+            - filename
+      - if:
+          properties:
+            deploy:
+              const: "relation"
+        then:
+          required:
+            - relation
+
+type: object
+properties:
+  base:
+    description: |
+      Global configuration
+    type: object
+    properties:
+      tmp:
+        description: |
+          Using tempolary directory when downloading tarball.
+        type: string
+  this:
+    description: |
+      Webhook-updater information.
+      This URL path is "/hook/this"
+    $ref: "#/definitions/target_prop"
+  targets:
+    description: |
+      Target information.
+      The key parametor using a URL path. (ex. /hook/"key")
+      reserved word: "this"
+    type: object
+    minimum: 1
+    patternProperties:
+      ^\w*:
+        $ref: "#/definitions/target_cond"
+required:
+  - "this"
+  - "targets"
