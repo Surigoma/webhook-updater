@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal, Optional, TypedDict
 import yaml
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,7 +17,7 @@ class TargetCondition:
     action: str
 
 
-class Target:
+class Target(TypedDict):
     repo: str
     path: Optional[str]
     secret: Optional[str]
@@ -27,11 +27,11 @@ class Target:
     relation: Optional[str]
 
 
-class Base:
+class Base(TypedDict):
     tmp: Optional[str]
 
 
-class Settings:
+class Settings(TypedDict):
     base: Optional[Base]
     this: Target
     targets: dict[str, Target]

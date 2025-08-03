@@ -13,6 +13,7 @@ import tarfile
 import zipfile
 import logging
 
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger()
 
 pwd = os.getcwd()
@@ -69,8 +70,8 @@ async def check_condition(req: Request, conditions: list[TargetCondition]) -> bo
 def download_file(meta_uri: str, target_setting: Target, target: str):
     _ZIP_TYPE: list[str] = ["application/zip"]
     _TAR_GZ_TYPE: list[str] = ["application/gzip", "application/tar+gzip"]
-    target_file = target_setting.filename
-    target_path = target_setting.path
+    target_file = target_setting["filename"]
+    target_path = target_setting["path"]
     if target_file is None or target_path is None:
         return False
     target_path = os.path.abspath(target_path)
@@ -113,8 +114,8 @@ def download_file(meta_uri: str, target_setting: Target, target: str):
         return False
     tmp_filename = f"{target}_{target_file}"
     tmp_dir = os.path.abspath("./tmp/")
-    if settings.base is not None and settings.base.tmp is not None:
-        tmp_dir = os.path.abspath(settings.base.tmp)
+    if settings["base"] is not None and settings["base"]["tmp"] is not None:
+        tmp_dir = os.path.abspath(settings["base"]["tmp"])
     if not os.path.exists(tmp_dir):
         os.mkdir(tmp_dir)
     tmp_path = f"{tmp_dir}/{tmp_filename}"
@@ -136,14 +137,14 @@ async def hook(target: str, req: Request):
     req_body = await req.json()
     target_setting: Target | None = None
     if target == "this":
-        target_setting = settings.this
-    elif target in settings.targets:
-        target_setting = settings.targets[target]
+        target_setting = settings["this"]
+    elif target in settings["targets"]:
+        target_setting = settings["targets"][target]
     if not target_setting:
         logger.info(f"{target}: not found")
         return JSONResponse({"status": "not found"}, 404)
-    secret = target_setting.secret
-    deploy = target_setting.deploy
+    secret = target_setting["secret"]
+    deploy = target_setting["deploy"]
     if secret is None:
         secret = ""
     if not verify_signature(req, secret):
@@ -151,11 +152,11 @@ async def hook(target: str, req: Request):
         return JSONResponse({"status": "Signature error."}, 403)
     if check_ping(req):
         return JSONResponse({"status": "ok"}, 200)
-    if not check_condition(req, target_setting.conditions):
+    if not check_condition(req, target_setting["conditions"]):
         logger.debug(f"{target}: not doing.")
         return JSONResponse({"status": "not doing."})
     if deploy == "relation":
-        relation = target_setting.relation
+        relation = target_setting["relation"]
         if relation is None or relation == "":
             logger.debug(f"{target}: Please set relation URL.")
             return JSONResponse({"status": "not doing."})
@@ -167,20 +168,20 @@ async def hook(target: str, req: Request):
         if "repository" not in body or "full_name" not in body["repository"]:
             logger.info(f"{target}: Not support action type.")
             return JSONResponse({"status": "Not support action type."}, 501)
-        if body["repository"]["full_name"] != target_setting.repo:
+        if body["repository"]["full_name"] != target_setting["repo"]:
             logger.info(
-                f"{target},{target_setting.repo}: Not match the Target repo and request body."
+                f"{target},{target_setting['repo']}: Not match the Target repo and request body."
             )
             return JSONResponse({"status": "not found"}, 404)
         if deploy == "git":
-            git_pull(target_setting.repo)
+            git_pull(target_setting["repo"])
         elif deploy == "download_file":
-            if target_setting.filename is None:
+            if target_setting["filename"] is None:
                 logger.info(f"{target}: Please set filename.")
                 return JSONResponse({"status": "Not support action type."}, 501)
             if "release" in req_body:
                 if not download_file(
-                    f"https://api.github.com/repos/{target_setting.repo}/release/{req_body['release']['id']}",
+                    f"https://api.github.com/repos/{target_setting['repo']}/release/{req_body['release']['id']}",
                     target_setting,
                     target,
                 ):
