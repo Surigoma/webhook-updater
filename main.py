@@ -68,7 +68,7 @@ async def check_condition(req: Request, conditions: list[TargetCondition]) -> bo
     for condition in conditions:
         if req_event != condition["eventType"]:
             continue
-        if condition["action"] is not None:
+        if "action" in condition:
             if "action" not in req_body:
                 continue
             req_action = condition["action"]
