@@ -185,6 +185,13 @@ async def hook(target: str, req: Request):
             )
             return JSONResponse({"status": "not found"}, 404)
         if deploy == "git":
+            path = None
+            if "path" in target_setting:
+                path = target_setting["path"]
+            if path is None:
+                path = target_setting["repo"]
+            if target == "this":
+                path = pwd
             git_pull(target_setting["repo"])
         elif deploy == "download_file":
             if target_setting["filename"] is None:
