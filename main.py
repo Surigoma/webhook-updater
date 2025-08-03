@@ -150,6 +150,7 @@ async def hook(target: str, req: Request):
         logger.info(f"{target}: Signature error.")
     if check_ping(req):
         return JSONResponse({"status": "ok"}, 200)
+    if not check_condition(req, target_setting.conditions):
         logger.debug(f"{target}: not doing.")
         return JSONResponse({"result": "not doing."})
     if deploy == "relation":
