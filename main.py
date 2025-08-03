@@ -1,4 +1,5 @@
 import os
+from shutil import which
 from typing import Literal, Optional
 import requests
 from subprocess import PIPE, STDOUT, Popen
@@ -16,6 +17,11 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger()
 
+git = which("git")
+if git is None:
+    logger.error("Please install git.")
+    exit(-1)
+
 pwd = os.getcwd()
 
 if settings is None:
@@ -26,18 +32,20 @@ app = FastAPI(debug=True)
 
 
 def git_pull(path: str):
+    if git is None:
+        logger.error("Please install git.")
+        return
     p = Popen(
-        ["git", "pull"],
-        executable=path,
-        cwd=path,
-        shell=True,
+        [git, "pull"],
+        cwd=os.path.abspath(path),
+        shell=False,
         stdout=PIPE,
         stderr=STDOUT,
     )
     pipe = p.stdout
     if pipe is not None:
         for line in iter(pipe.readline, b""):
-            logger.info("log: %r", line)
+            logger.info("log: %s", line.decode("utf-8"))
     p.wait()
 
 
