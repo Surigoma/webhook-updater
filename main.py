@@ -141,23 +141,24 @@ async def hook(target: str, req: Request):
         target_setting = settings.targets[target]
     if not target_setting:
         logger.info(f"{target}: not found")
-        return JSONResponse({"result": "not found"}, 404)
+        return JSONResponse({"status": "not found"}, 404)
     secret = target_setting.secret
     deploy = target_setting.deploy
     if secret is None:
         secret = ""
     if not verify_signature(req, secret):
         logger.info(f"{target}: Signature error.")
+        return JSONResponse({"status": "Signature error."}, 403)
     if check_ping(req):
         return JSONResponse({"status": "ok"}, 200)
     if not check_condition(req, target_setting.conditions):
         logger.debug(f"{target}: not doing.")
-        return JSONResponse({"result": "not doing."})
+        return JSONResponse({"status": "not doing."})
     if deploy == "relation":
         relation = target_setting.relation
         if relation is None or relation == "":
             logger.debug(f"{target}: Please set relation URL.")
-            return JSONResponse({"result": "not doing."})
+            return JSONResponse({"status": "not doing."})
         res = requests.post(url=relation, headers=req.headers, data=await req.body())
         if res.status_code != 200:
             return JSONResponse(res.json(), res.status_code)
@@ -165,29 +166,29 @@ async def hook(target: str, req: Request):
         body = await req.json()
         if "repository" not in body or "full_name" not in body["repository"]:
             logger.info(f"{target}: Not support action type.")
-            return JSONResponse({"result": "Not support action type."}, 501)
+            return JSONResponse({"status": "Not support action type."}, 501)
         if body["repository"]["full_name"] != target_setting.repo:
             logger.info(
                 f"{target},{target_setting.repo}: Not match the Target repo and request body."
             )
-            return JSONResponse({"result": "not found"}, 404)
+            return JSONResponse({"status": "not found"}, 404)
         if deploy == "git":
             git_pull(target_setting.repo)
         elif deploy == "download_file":
             if target_setting.filename is None:
                 logger.info(f"{target}: Please set filename.")
-                return JSONResponse({"result": "Not support action type."}, 501)
+                return JSONResponse({"status": "Not support action type."}, 501)
             if "release" in req_body:
                 if not download_file(
                     f"https://api.github.com/repos/{target_setting.repo}/release/{req_body['release']['id']}",
                     target_setting,
                     target,
                 ):
-                    return JSONResponse({"result": "failed to download release."}, 500)
+                    return JSONResponse({"status": "failed to download release."}, 500)
             else:
                 logger.info(f"{target}: Not support action type.")
-                return JSONResponse({"result": "Not support action type."}, 501)
-    return JSONResponse({"result": "ok"})
+                return JSONResponse({"status": "Not support action type."}, 501)
+    return JSONResponse({"status": "ok"})
 
 
 if __name__ == "__main__":
