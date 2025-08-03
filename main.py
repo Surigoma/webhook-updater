@@ -147,12 +147,12 @@ async def hook(target: str, req: Request):
     deploy = target_setting["deploy"]
     if secret is None:
         secret = ""
-    if not verify_signature(req, secret):
+    if not await verify_signature(req, secret):
         logger.info(f"{target}: Signature error.")
         return JSONResponse({"status": "Signature error."}, 403)
-    if check_ping(req):
+    if await check_ping(req):
         return JSONResponse({"status": "ok"}, 200)
-    if not check_condition(req, target_setting["conditions"]):
+    if not await check_condition(req, target_setting["conditions"]):
         logger.debug(f"{target}: not doing.")
         return JSONResponse({"status": "not doing."})
     if deploy == "relation":
