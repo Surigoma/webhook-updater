@@ -66,12 +66,12 @@ async def check_condition(req: Request, conditions: list[TargetCondition]) -> bo
     if req_event is None:
         return False
     for condition in conditions:
-        if req_event != condition.eventType:
+        if req_event != condition["eventType"]:
             continue
-        if condition.action is not None:
+        if condition["action"] is not None:
             if "action" not in req_body:
                 continue
-            req_action = condition.action
+            req_action = condition["action"]
             if req_body["action"] != req_action:
                 continue
         return True

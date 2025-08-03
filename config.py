@@ -12,7 +12,7 @@ class DotEnv(BaseSettings):
     github_token: Optional[str] = Field(default=None)
 
 
-class TargetCondition:
+class TargetCondition(TypedDict):
     eventType: str
     action: str
 
