@@ -192,7 +192,7 @@ async def hook(target: str, req: Request):
                 path = target_setting["repo"]
             if target == "this":
                 path = pwd
-            git_pull(target_setting["repo"])
+            git_pull(path)
         elif deploy == "download_file":
             if target_setting["filename"] is None:
                 logger.info(f"{target}: Please set filename.")
