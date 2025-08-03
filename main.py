@@ -1,7 +1,7 @@
 import os
 from typing import Literal, Optional
 import requests
-from subprocess import Popen
+from subprocess import PIPE, STDOUT, Popen
 from fastapi import FastAPI
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
@@ -26,8 +26,19 @@ app = FastAPI(debug=True)
 
 
 def git_pull(path: str):
-    Popen(["git", "pull"], executable=path)
-    pass
+    p = Popen(
+        ["git", "pull"],
+        executable=path,
+        cwd=path,
+        shell=True,
+        stdout=PIPE,
+        stderr=STDOUT,
+    )
+    pipe = p.stdout
+    if pipe is not None:
+        for line in iter(pipe.readline, b""):
+            logger.info("log: %r", line)
+    p.wait()
 
 
 # https://docs.github.com/ja/webhooks/using-webhooks/validating-webhook-deliveries#python-example
