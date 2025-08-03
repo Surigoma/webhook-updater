@@ -146,7 +146,7 @@ def download_file(meta_uri: str, target_setting: Target, target: str):
         with zipfile.ZipFile(tmp_path, "r") as f:
             f.extractall(target_path)
     elif target_file_type == "gz.tar":
-        with tarfile.TarFile(tmp_filename, "r") as f:
+        with tarfile.TarFile(tmp_path, "r") as f:
             f.extractall(target_path)
     os.remove(tmp_path)
     return True
