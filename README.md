@@ -2,9 +2,6 @@
 
 Update file from Webhook event from GitHub.
 
-> [!WARNING]
-> I think it might work, but I haven't actually tested it.
-
 ## Features
 
 - Catch webhook from GitHub.
@@ -12,8 +9,8 @@ Update file from Webhook event from GitHub.
   - Git pull
   - Download release file and Uncompress archive file
     - tar.gz
-    - zip
-  - Webhook relation
+    - **[NOT TESTED]** zip
+  - **[NOT TESTED]** Webhook relation
 - Verify signature at header.
 - **[NOT TESTED]** GitHub API Token (for Private repo)
 
@@ -28,3 +25,20 @@ Update file from Webhook event from GitHub.
 ### Run
 
 1. Execute: `uv run main.py`
+
+### Service sample (systemd)
+
+```
+[Unit]
+Description=WebHook Updater
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/webhook-updater
+ExecStart=/path/to/uv run main.py
+Restart=yes
+User=<Running User> #IF NEEDED
+
+[Install]
+WantedBy=multi-user.target
+```
