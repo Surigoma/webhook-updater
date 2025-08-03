@@ -39,6 +39,15 @@ async def verify_signature(req: Request, secret: str) -> bool:
     return hmac.compare_digest(expected_sig, sig_header)
 
 
+async def check_ping(req: Request) -> bool:
+    req_event = req.headers.get("X-GitHub-Event")
+    if req_event is None:
+        return False
+    if req_event.lower() == "ping":
+        return True
+    return False
+
+
 async def check_condition(req: Request, conditions: list[TargetCondition]) -> bool:
     req_body = await req.json()
     req_event = req.headers.get("X-GitHub-Event")
@@ -139,8 +148,8 @@ async def hook(target: str, req: Request):
         secret = ""
     if not verify_signature(req, secret):
         logger.info(f"{target}: Signature error.")
-        return JSONResponse({"result": "Signature error."}, 403)
-    if check_condition(req, target_setting.conditions):
+    if check_ping(req):
+        return JSONResponse({"status": "ok"}, 200)
         logger.debug(f"{target}: not doing.")
         return JSONResponse({"result": "not doing."})
     if deploy == "relation":
