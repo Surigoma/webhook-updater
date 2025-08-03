@@ -207,7 +207,7 @@ async def hook(target: str, req: Request):
                 return JSONResponse({"status": "Not support action type."}, 501)
             if "release" in req_body:
                 if not download_file(
-                    f"https://api.github.com/repos/{target_setting['repo']}/release/{req_body['release']['id']}",
+                    f"https://api.github.com/repos/{target_setting['repo']}/releases/{req_body['release']['id']}",
                     target_setting,
                     target,
                 ):
