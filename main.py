@@ -117,12 +117,14 @@ def download_file(meta_uri: str, target_setting: Target, target: str):
     if "assets" not in meta_body:
         return False
     for asset in meta_body["assets"]:
+        if "content_type" not in asset:
+            continue
         content_type = asset["content_type"]
         if content_type in _ZIP_TYPE:
             target_file_type = "zip"
         elif content_type in _TAR_GZ_TYPE:
             target_file_type = "gz.tar"
-        if content_type is None:
+        if target_file_type is None:
             continue
         if asset["name"] == target_file:
             target_file_url = asset["browser_download_url"]
