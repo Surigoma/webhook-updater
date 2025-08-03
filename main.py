@@ -141,6 +141,7 @@ def download_file(meta_uri: str, target_setting: Target, target: str):
     with open(tmp_path, "wb") as f:
         for chunk in file_res.iter_content(chunk_size=1024 * 1024):
             f.write(chunk)
+    logger.debug("Extract: %s to %s", tmp_path, target_path)
     if target_file_type == "zip":
         with zipfile.ZipFile(tmp_path, "r") as f:
             f.extractall(target_path)
