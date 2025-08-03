@@ -193,3 +193,4 @@ pip-selfcheck.json
 config.*
 !config.py
 !config.template.yml
+.tmp/
