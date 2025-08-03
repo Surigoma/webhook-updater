@@ -88,7 +88,11 @@ async def check_condition(req: Request, conditions: list[TargetCondition]) -> bo
 
 def download_file(meta_uri: str, target_setting: Target, target: str):
     _ZIP_TYPE: list[str] = ["application/zip"]
-    _TAR_GZ_TYPE: list[str] = ["application/gzip", "application/tar+gzip"]
+    _TAR_GZ_TYPE: list[str] = [
+        "application/gzip",
+        "application/tar+gzip",
+        "application/x-gtar",
+    ]
     target_file = target_setting["filename"]
     target_path = target_setting["path"]
     if target_file is None or target_path is None:
