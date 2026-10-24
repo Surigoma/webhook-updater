@@ -1,9 +1,11 @@
 import os
+import sys
 from shutil import which
 from typing import Literal, Optional
 import requests
 from subprocess import PIPE, STDOUT, Popen
 from fastapi import FastAPI
+from starlette.background import BackgroundTask
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -22,21 +24,28 @@ if git is None:
     logger.error("Please install git.")
     exit(-1)
 
-pwd = os.getcwd()
-
 if settings is None:
     logger.error("Needs config.yml")
     exit(-1)
 
 app = FastAPI(debug=True)
+server: uvicorn.Server | None = None
+restart_requested = False
+
+
+def request_restart():
+    global restart_requested
+    restart_requested = True
+    if server is not None:
+        server.should_exit = True
 
 
 def git_pull(path: str):
     if git is None:
         logger.error("Please install git.")
-        return
+        return False
     p = Popen(
-        [git, "pull"],
+        [git, "pull", "--ff-only"],
         cwd=os.path.abspath(path),
         shell=False,
         stdout=PIPE,
@@ -46,7 +55,7 @@ def git_pull(path: str):
     if pipe is not None:
         for line in iter(pipe.readline, b""):
             logger.info("log: %s", line.decode("utf-8"))
-    p.wait()
+    return p.wait() == 0
 
 
 # https://docs.github.com/ja/webhooks/using-webhooks/validating-webhook-deliveries#python-example
@@ -200,14 +209,26 @@ async def hook(target: str, req: Request):
             )
             return JSONResponse({"status": "not found"}, 404)
         if deploy == "git":
+            if target == "this" and server is None:
+                return JSONResponse({"status": "Self-update requires uv run main.py."}, 503)
             path = None
             if "path" in target_setting:
                 path = target_setting["path"]
             if path is None:
                 path = target_setting["repo"]
             if target == "this":
-                path = pwd
-            git_pull(path)
+                path = os.path.dirname(os.path.abspath(__file__))
+            try:
+                updated = git_pull(path)
+            except OSError:
+                logger.exception("%s: Failed to run git pull.", target)
+                updated = False
+            if not updated:
+                return JSONResponse({"status": "git pull failed."}, 500)
+            if target == "this":
+                return JSONResponse(
+                    {"status": "ok"}, background=BackgroundTask(request_restart)
+                )
         elif deploy == "download_file":
             if target_setting["filename"] is None:
                 logger.info(f"{target}: Please set filename.")
@@ -226,4 +247,11 @@ async def hook(target: str, req: Request):
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    if sys.argv[1:] == ["--serve"]:
+        server = uvicorn.Server(uvicorn.Config(app, host="0.0.0.0", port=8000))
+        server.run()
+        sys.exit(75 if restart_requested else 0)
+    else:
+        from supervisor import run
+
+        sys.exit(run())

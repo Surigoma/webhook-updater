@@ -89,7 +89,7 @@ properties:
   this:
     description: |
       Webhook-updater information.
-      This URL path is "/hook/this"
+      This URL path is "/update/this"
     $ref: "#/definitions/target_prop"
   targets:
     description: |

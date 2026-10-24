@@ -26,6 +26,23 @@ Update file from Webhook event from GitHub.
 
 1. Execute: `uv run main.py`
 
+### Automatic self-update
+
+Configure a GitHub webhook on this repository with payload URL
+`https://your-host/update/this`, content type `application/json`, and the secret
+configured in `this.secret`. The template accepts `push` events.
+
+Run with `uv run main.py` (also when using systemd). After a verified matching
+webhook, the updater runs `git pull --ff-only` in its own checkout, responds,
+then gracefully stops the server. A supervisor runs `uv sync --locked` and starts
+the updated server. Commit `uv.lock` with dependency changes. Direct
+`uvicorn main:app` startup does not support self-update and returns HTTP 503.
+
+The checkout must have an upstream branch and Git credentials configured.
+A failed pull returns HTTP 500 and leaves the server running. A failed dependency
+sync stops the service and logs the error; fix or revert the checkout and run
+`uv sync --locked` before starting again. Restarting briefly interrupts service.
+
 ### Service sample (systemd)
 
 ```
