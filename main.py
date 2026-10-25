@@ -15,9 +15,15 @@ import hmac
 import tarfile
 import zipfile
 import logging
+import time
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger()
+
+# release-please などが先に release を公開し、後から asset を付与する競合向け。
+# 対象 filename の asset がまだ無い／meta GET が一時失敗のときだけ待つ。
+RELEASE_ASSET_RETRY_ATTEMPTS = 6
+RELEASE_ASSET_RETRY_BASE_DELAY_SECONDS = 2  # 2+4+8+16+32 ≒ 62s
 
 git = which("git")
 if git is None:
@@ -117,29 +123,93 @@ def download_file(meta_uri: str, target_setting: Target, target: str):
     }
     if bearer is not None:
         headers["Authorization"] = f"Bearer {token}"
-    meta_res = requests.get(meta_uri, headers=headers)
-    if meta_res.status_code != 200:
-        return False
-    meta_body = meta_res.json()
+
     target_file_url: Optional[str] = None
     target_file_type: Optional[Literal["zip", "gz.tar"]] = None
-    if "assets" not in meta_body:
-        return False
-    for asset in meta_body["assets"]:
-        if "content_type" not in asset:
+    for attempt in range(1, RELEASE_ASSET_RETRY_ATTEMPTS + 1):
+        try:
+            meta_res = requests.get(meta_uri, headers=headers, timeout=30)
+        except requests.RequestException as exc:
+            logger.warning(
+                "%s: release meta GET failed (attempt %d/%d): %s",
+                target,
+                attempt,
+                RELEASE_ASSET_RETRY_ATTEMPTS,
+                exc,
+            )
+            if attempt < RELEASE_ASSET_RETRY_ATTEMPTS:
+                time.sleep(
+                    RELEASE_ASSET_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+                )
             continue
-        content_type = asset["content_type"]
-        if content_type in _ZIP_TYPE:
-            target_file_type = "zip"
-        elif content_type in _TAR_GZ_TYPE:
-            target_file_type = "gz.tar"
-        if target_file_type is None:
-            continue
-        if asset["name"] == target_file:
-            target_file_url = asset["browser_download_url"]
+        if meta_res.status_code != 200:
+            if meta_res.status_code >= 500:
+                logger.warning(
+                    "%s: release meta GET %s (attempt %d/%d)",
+                    target,
+                    meta_res.status_code,
+                    attempt,
+                    RELEASE_ASSET_RETRY_ATTEMPTS,
+                )
+                if attempt < RELEASE_ASSET_RETRY_ATTEMPTS:
+                    time.sleep(
+                        RELEASE_ASSET_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+                    )
+                continue
+            logger.info(
+                "%s: release meta GET returned %s",
+                target,
+                meta_res.status_code,
+            )
+            return False
+        meta_body = meta_res.json()
+        target_file_url = None
+        target_file_type = None
+        if "assets" in meta_body:
+            for asset in meta_body["assets"]:
+                if "content_type" not in asset:
+                    continue
+                content_type = asset["content_type"]
+                found_type: Optional[Literal["zip", "gz.tar"]] = None
+                if content_type in _ZIP_TYPE:
+                    found_type = "zip"
+                elif content_type in _TAR_GZ_TYPE:
+                    found_type = "gz.tar"
+                if found_type is None:
+                    continue
+                if asset["name"] == target_file:
+                    target_file_url = asset["browser_download_url"]
+                    target_file_type = found_type
+                    break
+        if target_file_url is not None:
+            if attempt > 1:
+                logger.info(
+                    "%s: found release asset %s on attempt %d/%d",
+                    target,
+                    target_file,
+                    attempt,
+                    RELEASE_ASSET_RETRY_ATTEMPTS,
+                )
             break
-    if target_file_url is None:
+        logger.warning(
+            "%s: release asset %s not found yet (attempt %d/%d)",
+            target,
+            target_file,
+            attempt,
+            RELEASE_ASSET_RETRY_ATTEMPTS,
+        )
+        if attempt < RELEASE_ASSET_RETRY_ATTEMPTS:
+            time.sleep(RELEASE_ASSET_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1)))
+
+    if target_file_url is None or target_file_type is None:
+        logger.error(
+            "%s: release asset %s missing after %d attempts",
+            target,
+            target_file,
+            RELEASE_ASSET_RETRY_ATTEMPTS,
+        )
         return False
+
     headers = None
     if bearer is not None:
         headers = {"Authorization": bearer}

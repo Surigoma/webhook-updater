@@ -10,6 +10,7 @@ Update file from Webhook event from GitHub.
   - Download release file and Uncompress archive file
     - tar.gz
     - **[NOT TESTED]** zip
+    - Retries briefly when the release meta is temporarily unavailable or the target asset is not attached yet (for example when CI uploads assets after publishing)
   - **[NOT TESTED]** Webhook relation
 - Verify signature at header.
 - **[NOT TESTED]** GitHub API Token (for Private repo)
