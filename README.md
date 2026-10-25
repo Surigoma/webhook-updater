@@ -54,6 +54,10 @@ Description=WebHook Updater
 Type=simple
 WorkingDirectory=/path/to/webhook-updater
 ExecStart=/path/to/uv run main.py
+# systemd's default PATH is narrow; either extend PATH or set WEBHOOK_UPDATER_UV
+# so the supervisor can find uv after a self-update restart:
+Environment=PATH=/path/to/dir-containing-uv:/usr/bin
+# Environment=WEBHOOK_UPDATER_UV=/path/to/uv
 Restart=yes
 User=<Running User> #IF NEEDED
 

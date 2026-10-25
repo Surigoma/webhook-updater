@@ -259,7 +259,7 @@ class DownloadFileRetryTests(unittest.TestCase):
 
 
 class SupervisorTests(unittest.TestCase):
-    @patch.object(supervisor, "which", return_value="uv")
+    @patch.object(supervisor, "resolve_uv", return_value="/usr/bin/uv")
     def test_sync_then_restart(self, _):
         with patch.object(
             supervisor.subprocess,
@@ -268,9 +268,11 @@ class SupervisorTests(unittest.TestCase):
         ) as run:
             self.assertEqual(supervisor.run(), 0)
         self.assertEqual(run.call_count, 3)
-        self.assertEqual(run.call_args_list[1].args[0], ["uv", "sync", "--locked"])
+        self.assertEqual(
+            run.call_args_list[1].args[0], ["/usr/bin/uv", "sync", "--locked"]
+        )
 
-    @patch.object(supervisor, "which", return_value="uv")
+    @patch.object(supervisor, "resolve_uv", return_value="/usr/bin/uv")
     def test_sync_failure_stops(self, _):
         with patch.object(
             supervisor.subprocess,
@@ -280,13 +282,100 @@ class SupervisorTests(unittest.TestCase):
             self.assertEqual(supervisor.run(), 1)
         self.assertEqual(run.call_count, 2)
 
-    @patch.object(supervisor, "which", return_value="uv")
+    @patch.object(supervisor, "resolve_uv", return_value="/usr/bin/uv")
     def test_normal_exit_does_not_sync(self, _):
         with patch.object(
             supervisor.subprocess, "run", return_value=Mock(returncode=0)
         ) as run:
             self.assertEqual(supervisor.run(), 0)
         self.assertEqual(run.call_count, 1)
+
+    @patch.object(supervisor, "resolve_uv", return_value=None)
+    def test_missing_uv_exits_before_run(self, _):
+        with patch.object(supervisor.subprocess, "run") as run:
+            self.assertEqual(supervisor.run(), 1)
+        run.assert_not_called()
+
+
+class ResolveUvTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        self.tmp = Path(self._tmpdir.name) / "uv"
+        self.tmp.write_text("#!/bin/sh\n")
+        self.tmp.chmod(0o755)
+
+    def test_prefers_webhook_updater_uv_env(self):
+        other = Path(self.tmp).parent / "other-uv"
+        other.write_text("#!/bin/sh\n")
+        other.chmod(0o755)
+        self.addCleanup(lambda: other.unlink(missing_ok=True))
+        found = supervisor.resolve_uv(
+            environ={
+                "WEBHOOK_UPDATER_UV": str(self.tmp),
+                "UV": str(other),
+            },
+            which_fn=lambda _: str(other),
+            parent_exe_fn=lambda _: other,
+        )
+        self.assertEqual(found, str(self.tmp))
+
+    def test_uses_uv_env_when_webhook_unset(self):
+        found = supervisor.resolve_uv(
+            environ={"UV": str(self.tmp)},
+            which_fn=lambda _: None,
+            parent_exe_fn=lambda _: None,
+        )
+        self.assertEqual(found, str(self.tmp))
+
+    def test_ignores_env_when_not_executable(self):
+        missing = Path(self.tmp).parent / "missing-uv"
+        found = supervisor.resolve_uv(
+            environ={"WEBHOOK_UPDATER_UV": str(missing), "UV": str(missing)},
+            which_fn=lambda _: str(self.tmp),
+            parent_exe_fn=lambda _: None,
+        )
+        self.assertEqual(found, str(self.tmp))
+
+    def test_uses_which_when_env_absent(self):
+        found = supervisor.resolve_uv(
+            environ={},
+            which_fn=lambda _: str(self.tmp),
+            parent_exe_fn=lambda _: None,
+        )
+        self.assertEqual(found, str(self.tmp))
+
+    def test_uses_parent_exe_named_uv(self):
+        found = supervisor.resolve_uv(
+            environ={},
+            which_fn=lambda _: None,
+            get_ppid=lambda: 1,
+            parent_exe_fn=lambda ppid: self.tmp if ppid == 1 else None,
+        )
+        self.assertEqual(found, str(self.tmp))
+
+    def test_ignores_parent_exe_not_named_uv(self):
+        other = Path(self.tmp).parent / "python"
+        other.write_text("#!/bin/sh\n")
+        other.chmod(0o755)
+        self.addCleanup(lambda: other.unlink(missing_ok=True))
+        found = supervisor.resolve_uv(
+            environ={},
+            which_fn=lambda _: None,
+            get_ppid=lambda: 1,
+            parent_exe_fn=lambda _: other,
+        )
+        self.assertIsNone(found)
+
+    def test_returns_none_when_unresolved(self):
+        found = supervisor.resolve_uv(
+            environ={},
+            which_fn=lambda _: None,
+            parent_exe_fn=lambda _: None,
+        )
+        self.assertIsNone(found)
 
 
 if __name__ == "__main__":
