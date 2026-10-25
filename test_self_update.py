@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import types
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, mock_open, patch
 
 from starlette.requests import Request
 
@@ -99,6 +99,163 @@ class SelfUpdateTests(unittest.IsolatedAsyncioTestCase):
             with patch.object(self.main, "Popen", return_value=process) as start:
                 self.assertEqual(self.main.git_pull("."), code == 0)
             self.assertEqual(start.call_args.args[0][1:], ["pull", "--ff-only"])
+
+
+class DownloadFileRetryTests(unittest.TestCase):
+    def setUp(self):
+        config = types.ModuleType("config")
+        config.Target = dict
+        config.TargetCondition = dict
+        config.dot = types.SimpleNamespace(github_token=None)
+        config.settings = {
+            "this": {
+                "repo": "owner/updater",
+                "secret": "secret",
+                "deploy": "git",
+                "conditions": [{"eventType": "push"}],
+            },
+            "targets": {},
+            "base": {"tmp": None},
+        }
+        with patch.dict(sys.modules, {"config": config}):
+            sys.modules.pop("main", None)
+            self.main = importlib.import_module("main")
+        self.main.RELEASE_ASSET_RETRY_ATTEMPTS = 3
+        self.main.RELEASE_ASSET_RETRY_BASE_DELAY_SECONDS = 1
+        self.target_setting = {
+            "filename": "release.tar.gz",
+            "path": "/tmp/webhook-updater-test-extract",
+            "repo": "owner/site",
+        }
+
+    def _meta(self, assets, status=200):
+        res = Mock()
+        res.status_code = status
+        res.json.return_value = {"assets": assets}
+        return res
+
+    def _asset(self, name="release.tar.gz"):
+        return {
+            "name": name,
+            "content_type": "application/x-gtar",
+            "browser_download_url": "https://example.com/release.tar.gz",
+        }
+
+    def _file_res(self, status=200):
+        res = Mock()
+        res.status_code = status
+        res.iter_content.return_value = [b"data"]
+        return res
+
+    def test_retries_until_asset_appears(self):
+        meta_empty = self._meta([])
+        meta_ready = self._meta([self._asset()])
+        with (
+            patch.object(
+                self.main.requests,
+                "get",
+                side_effect=[meta_empty, meta_ready, self._file_res()],
+            ) as get,
+            patch.object(self.main.time, "sleep") as sleep,
+            patch.object(self.main.tarfile, "open") as tar_open,
+            patch.object(self.main.os, "remove"),
+            patch.object(self.main.os.path, "exists", return_value=True),
+            patch("builtins.open", mock_open()),
+        ):
+            tar_open.return_value.__enter__.return_value = Mock()
+            ok = self.main.download_file(
+                "https://api.github.com/repos/owner/site/releases/1",
+                self.target_setting,
+                "site",
+            )
+        self.assertTrue(ok)
+        self.assertEqual(get.call_count, 3)
+        sleep.assert_called_once_with(1)
+
+    def test_gives_up_when_asset_never_appears(self):
+        with (
+            patch.object(
+                self.main.requests, "get", return_value=self._meta([])
+            ) as get,
+            patch.object(self.main.time, "sleep") as sleep,
+        ):
+            ok = self.main.download_file(
+                "https://api.github.com/repos/owner/site/releases/1",
+                self.target_setting,
+                "site",
+            )
+        self.assertFalse(ok)
+        self.assertEqual(get.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_retries_on_meta_5xx_then_succeeds(self):
+        meta_err = self._meta([], status=502)
+        meta_ready = self._meta([self._asset()])
+        with (
+            patch.object(
+                self.main.requests,
+                "get",
+                side_effect=[meta_err, meta_ready, self._file_res()],
+            ) as get,
+            patch.object(self.main.time, "sleep") as sleep,
+            patch.object(self.main.tarfile, "open") as tar_open,
+            patch.object(self.main.os, "remove"),
+            patch.object(self.main.os.path, "exists", return_value=True),
+            patch("builtins.open", mock_open()),
+        ):
+            tar_open.return_value.__enter__.return_value = Mock()
+            ok = self.main.download_file(
+                "https://api.github.com/repos/owner/site/releases/1",
+                self.target_setting,
+                "site",
+            )
+        self.assertTrue(ok)
+        self.assertEqual(get.call_count, 3)
+        sleep.assert_called_once_with(1)
+
+    def test_does_not_retry_on_meta_4xx(self):
+        with (
+            patch.object(
+                self.main.requests, "get", return_value=self._meta([], status=404)
+            ) as get,
+            patch.object(self.main.time, "sleep") as sleep,
+        ):
+            ok = self.main.download_file(
+                "https://api.github.com/repos/owner/site/releases/1",
+                self.target_setting,
+                "site",
+            )
+        self.assertFalse(ok)
+        get.assert_called_once()
+        sleep.assert_not_called()
+
+    def test_retries_on_meta_timeout(self):
+        meta_ready = self._meta([self._asset()])
+        with (
+            patch.object(
+                self.main.requests,
+                "get",
+                side_effect=[
+                    self.main.requests.Timeout("timed out"),
+                    meta_ready,
+                    self._file_res(),
+                ],
+            ) as get,
+            patch.object(self.main.time, "sleep") as sleep,
+            patch.object(self.main.tarfile, "open") as tar_open,
+            patch.object(self.main.os, "remove"),
+            patch.object(self.main.os.path, "exists", return_value=True),
+            patch("builtins.open", mock_open()),
+        ):
+            tar_open.return_value.__enter__.return_value = Mock()
+            ok = self.main.download_file(
+                "https://api.github.com/repos/owner/site/releases/1",
+                self.target_setting,
+                "site",
+            )
+        self.assertTrue(ok)
+        self.assertEqual(get.call_count, 3)
+        sleep.assert_called_once_with(1)
 
 
 class SupervisorTests(unittest.TestCase):
